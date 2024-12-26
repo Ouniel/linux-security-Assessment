@@ -172,15 +172,15 @@ initialize_html_report() {
     <title>等保测评报告 - $(date '+%Y-%m-%d')</title>
     <meta charset="UTF-8">
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
         h1, h2 { color: #333; }
-        .section { margin: 20px 0; padding: 10px; border: 1px solid #ddd; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #fff; }
         .warning { color: orange; }
         .critical { color: red; }
         .info { color: black; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f5f5f5; }
+        table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #e9ecef; }
     </style>
 </head>
 <body>
@@ -571,17 +571,22 @@ main() {
     initialize_html_report
     log_message "INFO" "开始等保测评检查..."
     
-    # 执行所有检查
-    check_identification
-    check_access_control
-    check_security_audit
-    check_intrusion_prevention
-    check_data_security
-    check_database_security
-    check_web_security
-    check_container_security
-    check_network_security
-    check_vulnerabilities
+    # Run checks in parallel to improve speed
+    check_identification &
+    check_access_control &
+    check_security_audit &
+    check_intrusion_prevention &
+    check_data_security &
+    check_database_security &
+    check_mysql_security &
+    check_redis_security &
+    check_web_security &
+    check_container_security &
+    check_network_security &
+    check_vulnerabilities &
+
+    # Wait for all background processes to finish
+    wait
     
     # 生成报告
     generate_report
@@ -594,4 +599,3 @@ main() {
 
 # 执行主函数
 main
- 
