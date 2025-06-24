@@ -1,7 +1,8 @@
 #!/bin/bash
-# Linux应急响应检查脚本 v4.0
+# Linux应急响应检查脚本 v4.1
 # 功能：直接在终端输出关键系统信息，带彩色分割线
 # 增强版：增加更多安全检查项，支持结果导出
+# v4.1新增(2025-06-25)：监控17个关键Linux日志文件的全面分析
 
 # 判断是否禁用颜色
 USE_COLORS=true
@@ -56,7 +57,7 @@ OUTPUT_FILE=""
 # 使用说明
 usage() {
     echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║            ${WHITE}Linux应急响应脚本 v4.0${BLUE}                     ║${NC}"
+    echo -e "${BLUE}║            ${WHITE}Linux应急响应脚本 v4.1${BLUE}                     ║${NC}"
     echo -e "${BLUE}╚════════════════════════════════════════════════════════╝${NC}"
     echo -e "${YELLOW}用法:${NC} $0 [选项]"
     echo -e "${YELLOW}选项:${NC}"
@@ -377,6 +378,374 @@ analyze_ssh_logs() {
     else
         output "无法分析登录时间分布"
     fi
+}
+
+# 监控17个关键Linux日志文件
+monitor_critical_logs() {
+    header "监控17个关键Linux日志文件"
+    
+    local critical_logs=0
+    local existing_logs=0
+    local warnings=0
+    local errors=0
+    
+    # 定义日志文件数组和描述
+    declare -A log_files=(
+        ["/var/log/syslog"]="系统核心日志(Debian/Ubuntu)"
+        ["/var/log/messages"]="系统核心日志(RHEL/CentOS)"
+        ["/var/log/auth.log"]="用户认证日志(Debian/Ubuntu)"
+        ["/var/log/secure"]="用户认证日志(RHEL/CentOS)"
+        ["/var/log/kern.log"]="内核事件日志"
+        ["/var/log/wtmp"]="成功登录历史"
+        ["/var/log/btmp"]="失败登录尝试"
+        ["/var/log/lastlog"]="用户最后登录时间"
+        ["/var/log/cron"]="定时任务日志"
+        ["/var/log/boot.log"]="系统启动日志"
+        ["/var/log/dmesg"]="内核缓冲区日志"
+        ["/var/log/apache2/access.log"]="Apache访问日志(Debian)"
+        ["/var/log/httpd/access_log"]="Apache访问日志(RHEL)"
+        ["/var/log/apache2/error.log"]="Apache错误日志(Debian)"
+        ["/var/log/httpd/error_log"]="Apache错误日志(RHEL)"
+        ["/var/log/nginx/access.log"]="Nginx访问日志"
+        ["/var/log/nginx/error.log"]="Nginx错误日志"
+        ["/var/log/audit/audit.log"]="Linux审计系统日志"
+        ["/var/log/faillog"]="用户登录失败详情"
+        ["/var/log/dpkg.log"]="软件包管理日志(Debian/Ubuntu)"
+        ["/var/log/yum.log"]="软件包管理日志(RHEL/CentOS)"
+    )
+    
+    # 1. 日志文件存在性检查
+    output "${GREEN}┏━━━━━━━━━━━━━━━━━━ 关键日志文件存在性检查 ━━━━━━━━━━━━━━━━━━┓${NC}"
+    for log_path in "${!log_files[@]}"; do
+        critical_logs=$((critical_logs + 1))
+        if [ -f "$log_path" ]; then
+            existing_logs=$((existing_logs + 1))
+            local file_size=$(stat -c%s "$log_path" 2>/dev/null)
+            local file_age=$(find "$log_path" -mtime +1 -print 2>/dev/null)
+            
+            if [ "$file_size" -eq 0 ]; then
+                output "${YELLOW}[警告]${NC} $log_path - ${log_files[$log_path]} (文件为空)"
+                warnings=$((warnings + 1))
+            elif [ -n "$file_age" ]; then
+                output "${YELLOW}[警告]${NC} $log_path - ${log_files[$log_path]} (超过1天未更新)"
+                warnings=$((warnings + 1))
+            else
+                output "${GREEN}[存在]${NC} $log_path - ${log_files[$log_path]} ($(du -h "$log_path" | cut -f1))"
+            fi
+        else
+            output "${RED}[缺失]${NC} $log_path - ${log_files[$log_path]}"
+        fi
+    done
+    output "${GREEN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+    
+    # 2. 系统核心日志分析
+    output "\n${GREEN}┏━━━━━━━━━━━━━━━━━━ 系统核心日志分析 ━━━━━━━━━━━━━━━━━━┓${NC}"
+    for sys_log in "/var/log/syslog" "/var/log/messages"; do
+        if [ -f "$sys_log" ]; then
+            output "分析 $sys_log:"
+            
+            # 检查系统错误
+            local sys_errors=$(grep -i "error\|critical\|alert\|emergency" "$sys_log" 2>/dev/null | tail -n 5)
+            if [ -n "$sys_errors" ]; then
+                output "${RED}系统错误信息:${NC}"
+                output "$sys_errors"
+                errors=$((errors + 1))
+            fi
+            
+            # 检查服务启动/停止
+            local service_events=$(grep -E "systemd.*Started|systemd.*Stopped|systemd.*Failed" "$sys_log" 2>/dev/null | tail -n 5)
+            if [ -n "$service_events" ]; then
+                output "${YELLOW}最近服务事件:${NC}"
+                output "$service_events"
+            fi
+            
+            # 检查磁盘空间警告
+            local disk_warnings=$(grep -i "no space left\|disk.*full\|filesystem.*full" "$sys_log" 2>/dev/null | tail -n 3)
+            if [ -n "$disk_warnings" ]; then
+                output "${RED}磁盘空间警告:${NC}"
+                output "$disk_warnings"
+                errors=$((errors + 1))
+            fi
+            break
+        fi
+    done
+    output "${GREEN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+    
+    # 3. 用户认证和登录监控
+    output "\n${GREEN}┏━━━━━━━━━━━━━━━━━━ 用户认证和登录监控 ━━━━━━━━━━━━━━━━━━┓${NC}"
+    
+    # wtmp分析 - 成功登录
+    if [ -f "/var/log/wtmp" ]; then
+        output "最近成功登录 (last 10条):"
+        output "$(last -n 10 2>/dev/null | head -n 10)"
+        
+        # 统计登录IP
+        local login_ips=$(last -i 2>/dev/null | grep -v "reboot\|wtmp" | awk '{print $3}' | grep -E '^[0-9]' | sort | uniq -c | sort -nr | head -n 5)
+        if [ -n "$login_ips" ]; then
+            output "\n${YELLOW}登录IP统计 (前5位):${NC}"
+            output "$login_ips"
+        fi
+    fi
+    
+    # btmp分析 - 失败登录
+    if [ -f "/var/log/btmp" ]; then
+        output "\n最近失败登录尝试 (lastb 10条):"
+        local failed_logins=$(lastb -n 10 2>/dev/null | head -n 10)
+        if [ -n "$failed_logins" ]; then
+            output "$failed_logins"
+            
+            # 统计暴力破解IP
+            local brute_ips=$(lastb 2>/dev/null | grep -v "btmp" | awk '{print $3}' | grep -E '^[0-9]' | sort | uniq -c | sort -nr | head -n 5)
+            if [ -n "$brute_ips" ]; then
+                output "\n${RED}暴力破解IP统计 (前5位):${NC}"
+                output "$brute_ips"
+                errors=$((errors + 1))
+            fi
+        else
+            output "无失败登录记录"
+        fi
+    fi
+    
+    # lastlog分析 - 最后登录时间
+    if [ -f "/var/log/lastlog" ]; then
+        output "\n用户最后登录时间分析:"
+        local inactive_users=$(lastlog 2>/dev/null | grep "Never logged in\|**Never logged in**" | wc -l)
+        output "从未登录的用户数: $inactive_users"
+        
+        # 显示最近登录的活跃用户
+        local active_users=$(lastlog 2>/dev/null | grep -v "Never logged in\|Username\|**Never logged in**" | head -n 5)
+        if [ -n "$active_users" ]; then
+            output "${YELLOW}最近活跃用户:${NC}"
+            output "$active_users"
+        fi
+    fi
+    output "${GREEN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+    
+    # 4. 内核和系统监控
+    output "\n${GREEN}┏━━━━━━━━━━━━━━━━━━ 内核和系统监控 ━━━━━━━━━━━━━━━━━━┓${NC}"
+    
+    # kern.log分析
+    if [ -f "/var/log/kern.log" ]; then
+        output "内核日志分析 (/var/log/kern.log):"
+        local kernel_errors=$(grep -i "error\|warning\|failed\|panic\|oops" /var/log/kern.log 2>/dev/null | tail -n 5)
+        if [ -n "$kernel_errors" ]; then
+            output "${RED}内核错误/警告:${NC}"
+            output "$kernel_errors"
+            errors=$((errors + 1))
+        else
+            output "未发现内核错误"
+        fi
+        
+        # 硬件相关事件
+        local hardware_events=$(grep -i "hardware\|disk\|memory\|cpu\|temperature" /var/log/kern.log 2>/dev/null | tail -n 3)
+        if [ -n "$hardware_events" ]; then
+            output "\n${YELLOW}硬件相关事件:${NC}"
+            output "$hardware_events"
+        fi
+    fi
+    
+    # dmesg分析
+    output "\ndmesg内核缓冲区分析:"
+    local dmesg_errors=$(dmesg 2>/dev/null | grep -i "error\|fail\|warning" | tail -n 5)
+    if [ -n "$dmesg_errors" ]; then
+        output "${RED}dmesg错误信息:${NC}"
+        output "$dmesg_errors"
+        errors=$((errors + 1))
+    else
+        output "dmesg未发现明显错误"
+    fi
+    
+    # 启动日志分析
+    if [ -f "/var/log/boot.log" ]; then
+        output "\n启动日志分析 (/var/log/boot.log):"
+        local boot_failures=$(grep -i "failed\|error\|timeout" /var/log/boot.log 2>/dev/null | tail -n 3)
+        if [ -n "$boot_failures" ]; then
+            output "${RED}启动失败/错误:${NC}"
+            output "$boot_failures"
+            errors=$((errors + 1))
+        else
+            output "启动过程正常"
+        fi
+    fi
+    output "${GREEN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+    
+    # 5. 服务和应用日志
+    output "\n${GREEN}┏━━━━━━━━━━━━━━━━━━ 服务和应用日志 ━━━━━━━━━━━━━━━━━━┓${NC}"
+    
+    # cron日志分析
+    if [ -f "/var/log/cron" ]; then
+        output "定时任务日志分析 (/var/log/cron):"
+        local cron_errors=$(grep -i "error\|failed" /var/log/cron 2>/dev/null | tail -n 5)
+        if [ -n "$cron_errors" ]; then
+            output "${RED}定时任务错误:${NC}"
+            output "$cron_errors"
+            errors=$((errors + 1))
+        fi
+        
+        # 最近执行的cron任务
+        local recent_cron=$(grep "$(date +'%b %d')" /var/log/cron 2>/dev/null | tail -n 5)
+        if [ -n "$recent_cron" ]; then
+            output "${YELLOW}今日定时任务:${NC}"
+            output "$recent_cron"
+        fi
+    fi
+    
+    # Web服务器日志分析
+    for web_access in "/var/log/apache2/access.log" "/var/log/httpd/access_log" "/var/log/nginx/access.log"; do
+        if [ -f "$web_access" ]; then
+            output "\nWeb访问日志分析 ($web_access):"
+            
+            # 统计状态码
+            local status_codes=$(tail -n 1000 "$web_access" 2>/dev/null | awk '{print $9}' | sort | uniq -c | sort -nr | head -n 5)
+            if [ -n "$status_codes" ]; then
+                output "${YELLOW}HTTP状态码统计 (最近1000条):${NC}"
+                output "$status_codes"
+            fi
+            
+            # 检查4xx和5xx错误
+            local http_errors=$(tail -n 1000 "$web_access" 2>/dev/null | awk '$9 >= 400 {print}' | wc -l)
+            if [ "$http_errors" -gt 0 ]; then
+                output "${RED}发现 $http_errors 个HTTP错误 (4xx/5xx)${NC}"
+                warnings=$((warnings + 1))
+            fi
+            
+            # 可疑请求检测
+            local suspicious_requests=$(tail -n 1000 "$web_access" 2>/dev/null | grep -E "(\.php\?|eval\(|base64|exec\(|system\(|passthru\()" | wc -l)
+            if [ "$suspicious_requests" -gt 0 ]; then
+                output "${RED}发现 $suspicious_requests 个可疑请求${NC}"
+                errors=$((errors + 1))
+            fi
+            break
+        fi
+    done
+    
+    for web_error in "/var/log/apache2/error.log" "/var/log/httpd/error_log" "/var/log/nginx/error.log"; do
+        if [ -f "$web_error" ]; then
+            output "\nWeb错误日志分析 ($web_error):"
+            local web_err_count=$(tail -n 100 "$web_error" 2>/dev/null | wc -l)
+            if [ "$web_err_count" -gt 0 ]; then
+                output "${YELLOW}最近100条错误日志中的错误数: $web_err_count${NC}"
+                local critical_web_errors=$(tail -n 100 "$web_error" 2>/dev/null | grep -i "critical\|alert\|emergency" | wc -l)
+                if [ "$critical_web_errors" -gt 0 ]; then
+                    output "${RED}关键Web错误数: $critical_web_errors${NC}"
+                    errors=$((errors + 1))
+                fi
+            fi
+            break
+        fi
+    done
+    output "${GREEN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+    
+    # 6. 安全和审计日志
+    output "\n${GREEN}┏━━━━━━━━━━━━━━━━━━ 安全和审计日志 ━━━━━━━━━━━━━━━━━━┓${NC}"
+    
+    # audit.log分析
+    if [ -f "/var/log/audit/audit.log" ]; then
+        output "Linux审计系统日志分析 (/var/log/audit/audit.log):"
+        
+        # 检查审计服务状态
+        if systemctl is-active auditd >/dev/null 2>&1; then
+            output "${GREEN}审计服务运行正常${NC}"
+        else
+            output "${RED}警告: 审计服务未运行${NC}"
+            warnings=$((warnings + 1))
+        fi
+        
+        # 分析审计事件
+        local audit_events=$(tail -n 100 /var/log/audit/audit.log 2>/dev/null | grep -E "type=(USER_LOGIN|USER_AUTH|SYSCALL)" | wc -l)
+        output "最近100条审计记录中的安全事件数: $audit_events"
+        
+        # 检查失败的系统调用
+        local failed_syscalls=$(tail -n 1000 /var/log/audit/audit.log 2>/dev/null | grep "res=failed" | wc -l)
+        if [ "$failed_syscalls" -gt 0 ]; then
+            output "${YELLOW}发现 $failed_syscalls 个失败的系统调用${NC}"
+            warnings=$((warnings + 1))
+        fi
+    else
+        output "${RED}审计日志不存在，建议启用auditd服务${NC}"
+        warnings=$((warnings + 1))
+    fi
+    
+    # faillog分析
+    if [ -f "/var/log/faillog" ]; then
+        output "\n用户登录失败详情分析:"
+        # faillog是二进制文件，需要特殊处理
+        if command -v faillog >/dev/null 2>&1; then
+            local faillog_summary=$(faillog -a 2>/dev/null | grep -v "Login" | head -n 10)
+            if [ -n "$faillog_summary" ]; then
+                output "$faillog_summary"
+            else
+                output "无登录失败记录"
+            fi
+        else
+            output "faillog命令不可用"
+        fi
+    fi
+    output "${GREEN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+    
+    # 7. 包管理日志
+    output "\n${GREEN}┏━━━━━━━━━━━━━━━━━━ 包管理日志 ━━━━━━━━━━━━━━━━━━┓${NC}"
+    
+    # dpkg.log分析 (Debian/Ubuntu)
+    if [ -f "/var/log/dpkg.log" ]; then
+        output "软件包管理日志分析 (/var/log/dpkg.log):"
+        local recent_packages=$(tail -n 20 /var/log/dpkg.log 2>/dev/null | grep -E "install|remove|upgrade")
+        if [ -n "$recent_packages" ]; then
+            output "${YELLOW}最近软件包变更:${NC}"
+            output "$recent_packages"
+        fi
+        
+        # 统计今日包管理操作
+        local today_ops=$(grep "$(date +'%Y-%m-%d')" /var/log/dpkg.log 2>/dev/null | wc -l)
+        output "今日包管理操作数: $today_ops"
+    fi
+    
+    # yum.log分析 (RHEL/CentOS)
+    if [ -f "/var/log/yum.log" ]; then
+        output "软件包管理日志分析 (/var/log/yum.log):"
+        local recent_yum=$(tail -n 20 /var/log/yum.log 2>/dev/null)
+        if [ -n "$recent_yum" ]; then
+            output "${YELLOW}最近YUM操作:${NC}"
+            output "$recent_yum"
+        fi
+        
+        # 统计今日yum操作
+        local today_yum=$(grep "$(date +'%b %d')" /var/log/yum.log 2>/dev/null | wc -l)
+        output "今日YUM操作数: $today_yum"
+    fi
+    output "${GREEN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+    
+    # 8. 总结报告
+    output "\n${GREEN}┏━━━━━━━━━━━━━━━━━━ 日志监控总结报告 ━━━━━━━━━━━━━━━━━━┓${NC}"
+    output "检查的关键日志文件数: $critical_logs"
+    output "存在的日志文件数: $existing_logs"
+    output "发现的警告数: $warnings"
+    output "发现的错误数: $errors"
+    output "日志文件覆盖率: $(( existing_logs * 100 / critical_logs ))%"
+    
+    if [ "$errors" -gt 0 ]; then
+        output "\n${RED}风险评级: 高 (发现 $errors 个错误)${NC}"
+        output "${RED}建议: 立即检查错误日志，修复相关问题${NC}"
+    elif [ "$warnings" -gt 0 ]; then
+        output "\n${YELLOW}风险评级: 中 (发现 $warnings 个警告)${NC}"  
+        output "${YELLOW}建议: 关注警告信息，进行相应优化${NC}"
+    else
+        output "\n${GREEN}风险评级: 低 (系统日志状态良好)${NC}"
+        output "${GREEN}建议: 继续保持系统监控${NC}"
+    fi
+    
+    # 日志轮转检查
+    output "\n${YELLOW}日志轮转配置检查:${NC}"
+    if [ -f "/etc/logrotate.conf" ]; then
+        output "logrotate配置存在: /etc/logrotate.conf"
+        local logrotate_status=$(systemctl is-active logrotate.timer 2>/dev/null || echo "未启用")
+        output "logrotate定时器状态: $logrotate_status"
+    else
+        output "${RED}警告: logrotate配置文件不存在${NC}"
+        warnings=$((warnings + 1))
+    fi
+    
+    output "${GREEN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
 }
 
 # 找出差异的PID
@@ -845,12 +1214,13 @@ main() {
     collect_process_info
     
     echo -e "\n${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║${WHITE}           Linux 应急响应分析报告              ${BLUE}      ║${NC}"
+    echo -e "${BLUE}║${WHITE}           Linux 应急响应分析报告 v4.1         ${BLUE}      ║${NC}"
+    echo -e "${BLUE}║${WHITE}           增强功能：17个关键日志文件监控      ${BLUE}      ║${NC}"
     echo -e "${BLUE}╚════════════════════════════════════════════════════════╝${NC}"
     echo -e "${YELLOW}分析主机:${NC} $(hostname)"
     echo -e "${YELLOW}开始时间:${NC} $(date)"
     echo -e "${YELLOW}执行用户:${NC} $(whoami)"
-    echo -e "${YELLOW}分析版本:${NC} v4.0 高级分析\n"
+    echo -e "${YELLOW}分析版本:${NC} v4.1 增强日志监控\n"
     
     # 显示进度条
     progress_bar 0
@@ -1143,7 +1513,11 @@ main() {
     detect_rootkits
     progress_bar 96
     
-    # 19. 系统安全基线检查
+    # 19. 监控17个关键Linux日志文件
+    monitor_critical_logs
+    progress_bar 98
+    
+    # 20. 系统安全基线检查
     security_baseline_check
     progress_bar 100
     
@@ -1161,6 +1535,8 @@ main() {
     output "${YELLOW}8. ${WHITE}Rootkit检测报告中的警告${NC}"
     output "${YELLOW}9. ${WHITE}SSH爆破记录和可疑登录${NC}"
     output "${YELLOW}10. ${WHITE}伪装系统进程和可疑文件检测结果${NC}"
+    output "${YELLOW}11. ${WHITE}17个关键日志文件的异常和错误${NC}"
+    output "${YELLOW}12. ${WHITE}系统日志中的安全事件和威胁指标${NC}"
     divider
     
     # 清理临时文件
