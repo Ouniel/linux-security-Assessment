@@ -70,13 +70,13 @@
 ### 🎯 一键运行（推荐）
 ```bash
 # 🌐 下载并运行脚本
-curl -sSL https://raw.githubusercontent.com/your-repo/linux-security-check/main/linux.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/Ouniel/linux-security-check/main/linux.sh | sudo bash
 ```
 
 ### 💻 本地运行
 ```bash
 # 1️⃣ 下载脚本
-wget https://raw.githubusercontent.com/your-repo/linux-security-check/main/linux.sh
+wget https://raw.githubusercontent.com/Ouniel/linux-security-check/main/linux.sh
 
 # 2️⃣ 添加执行权限
 chmod +x linux.sh
@@ -304,7 +304,7 @@ sudo ./linux.sh
 
 ```bash
 # 1️⃣ Fork本仓库
-git fork https://github.com/your-username/linux-security-check.git
+git fork https://github.com/Ouniel/linux-security-check.git
 
 # 2️⃣ 创建feature分支
 git checkout -b feature/amazing-feature
@@ -356,15 +356,12 @@ git push origin feature/amazing-feature
 
 **🌟 如果这个项目对您有帮助，请给我们一个Star！🌟**
 
-[![GitHub Stars](https://img.shields.io/github/stars/your-username/linux-security-check?style=social)](https://github.com/your-username/linux-security-check/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/your-username/linux-security-check?style=social)](https://github.com/your-username/linux-security-check/network/members)
+[![GitHub Stars](https://img.shields.io/github/stars/Ouniel/linux-security-check?style=social)](https://github.com/your-username/linux-security-check/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/Ouniel/linux-security-check?style=social)](https://github.com/your-username/linux-security-check/network/members)
 
 **感谢您的支持！💖**
 
 ---
 
-📧 **联系我们**：security@your-domain.com  
-🌐 **项目主页**：https://github.com/your-username/linux-security-check  
-📖 **文档网站**：https://your-username.github.io/linux-security-check
 
 </div>
