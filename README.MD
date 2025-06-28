@@ -356,8 +356,8 @@ git push origin feature/amazing-feature
 
 **🌟 如果这个项目对您有帮助，请给我们一个Star！🌟**
 
-[![GitHub Stars](https://img.shields.io/github/stars/Ouniel/linux-security-check?style=social)](https://github.com/your-username/linux-security-check/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/Ouniel/linux-security-check?style=social)](https://github.com/your-username/linux-security-check/network/members)
+[![GitHub Stars](https://img.shields.io/github/stars/Ouniel/linux-security-Assessment?style=social)](https://github.com/your-username/linux-security-check/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/Ouniel/linux-security-Assessment?style=social)](https://github.com/your-username/linux-security-check/network/members)
 
 **感谢您的支持！💖**
 
